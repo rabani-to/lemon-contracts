@@ -1,14 +1,32 @@
 // SPDX-License-Identifier: MIT
+//
+//      ___       ___           ___           ___           ___
+//     /  /\     /  /\         /  /\         /  /\         /  /\
+//    /  /:/    /  /::\       /  /::|       /  /::\       /  /::|
+//   /  /:/    /  /:/\:\     /  /:|:|      /  /:/\:\     /  /:|:|
+//  /  /:/    /  /::\ \:\   /  /:/|:|__   /  /:/  \:\   /  /:/|:|__
+// /__/:/    /__/:/\:\ \:\ /__/:/_|::::\ /__/:/ \__\:\ /__/:/ |:| /\
+// \  \:\    \  \:\ \:\_\/ \__\/  /~~/:/ \  \:\ /  /:/ \__\/  |:|/:/
+//  \  \:\    \  \:\ \:\         /  /:/   \  \:\  /:/      |  |:/:/
+//   \  \:\    \  \:\_\/        /  /:/     \  \:\/:/       |__|::/
+//    \  \:\    \  \:\         /__/:/       \  \::/        /__/:/
+//     \__\/     \__\/         \__\/         \__\/         \__\/
+//
+// https://lemon.tips
+
 pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import "./utils/AccessManager.sol";
 
-contract SimpleDonationModule is AccessControl {
-    bytes32 public constant ROLE_MANAGER = keccak256("ROLE_MANAGER");
-
+contract SimpleDonationModule is AccessManager {
     error ValueCantBeZero();
     error UserHasNoDonations();
+    error ClaimingError();
     error ZeroUserError();
+    error ZeroAddressError();
+    error AddressMismatch();
 
     event DonationReceived(
         address indexed from,
@@ -20,23 +38,23 @@ contract SimpleDonationModule is AccessControl {
         bytes32 indexed user,
         uint256 value
     );
+    event ETHReceived(address sender, uint256);
 
     struct User {
         uint256 totalReceived;
         uint256 claimed;
     }
 
+    mapping(bytes32 => bool) claimedBalances;
     mapping(bytes32 => User) private registry;
 
-    constructor() {
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(ROLE_MANAGER, msg.sender);
-    }
+    constructor() AccessManager(msg.sender) {}
 
     function donate(
         bytes32 userId
     ) public payable mustNotBeZero(msg.value) mustBeValidUser(userId) {
         registry[userId].totalReceived += msg.value;
+
         emit DonationReceived(msg.sender, userId, msg.value);
     }
 
@@ -44,31 +62,57 @@ contract SimpleDonationModule is AccessControl {
         return registry[userId];
     }
 
+    function unsafeClaimAll(
+        address destination
+    ) external onlyRole(ROLE_MANAGER) {
+        // NOTE: This should be removed or disabled in production
+        // As it allows MANAGERS to claim all the funds in the contract
+        payable(destination).transfer(address(this).balance);
+    }
+
     function claimFor(
         bytes32 userId,
-        address destination
-    ) public onlyRole(ROLE_MANAGER) mustBeValidUser(userId) {
-        require(destination != address(0), "InvalidAddress");
+        address destination,
+        bytes calldata stateHash
+    )
+        public
+        onlyRole(ROLE_MANAGER)
+        mustBeValidUser(userId)
+        mustBeValidAddress(destination)
+    {
+        bytes32 claimHash = MessageHashUtils.toEthSignedMessageHash(stateHash);
+        if (claimedBalances[claimHash]) revert ClaimingError();
 
+        _claimFor(userId, claimHash, destination);
+    }
+
+    function _claimFor(
+        bytes32 userId,
+        bytes32 claimHash,
+        address destination
+    ) private mustBeValidUser(userId) mustBeValidAddress(destination) {
         User storage user = registry[userId];
 
-        if (user.totalReceived == 0) revert UserHasNoDonations();
-        if (user.totalReceived == user.claimed) revert UserHasNoDonations();
+        uint256 balance = user.totalReceived - user.claimed;
 
-        uint256 pendingBalance = user.totalReceived - user.claimed;
+        // Try to transfer the balance to the destination address
+        if (balance == 0) revert UserHasNoDonations();
+        payable(destination).transfer(balance);
+
+        // Update the user's claimed balance
         user.claimed = user.totalReceived;
 
-        payable(destination).transfer(pendingBalance);
-        emit DonationClaimed(destination, userId, pendingBalance);
+        // Mark the claim as completed
+        claimedBalances[claimHash] = true;
+
+        // Increment the total transactions counter
+        emit DonationClaimed(destination, userId, balance);
     }
 
     // Acces Control functions
-    function addManager(address _user) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        _grantRole(ROLE_MANAGER, _user);
-    }
 
-    function revokeManager(address _user) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        _revokeRole(ROLE_MANAGER, _user);
+    receive() external payable {
+        emit ETHReceived(msg.sender, msg.value);
     }
 
     // Modifiers
@@ -79,6 +123,11 @@ contract SimpleDonationModule is AccessControl {
 
     modifier mustBeValidUser(bytes32 userId) {
         if (userId == bytes32(0)) revert ZeroUserError();
+        _;
+    }
+
+    modifier mustBeValidAddress(address addy) {
+        if (addy == address(0)) revert ZeroAddressError();
         _;
     }
 }

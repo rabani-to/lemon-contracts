@@ -16,23 +16,20 @@
 
 pragma solidity ^0.8.24;
 
-import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-abstract contract AccessManager is AccessControl {
-    bytes32 public constant ROLE_MANAGER = keccak256("ROLE_MANAGER");
-    bytes32 public constant ROLE_MINTER = keccak256("ROLE_MINTER");
+contract MockLemonToken is ERC20 {
+    uint8 private _decimals;
 
-    constructor(address _deafult_owner) {
-        _grantRole(DEFAULT_ADMIN_ROLE, _deafult_owner);
-        _grantRole(ROLE_MANAGER, _deafult_owner);
+    constructor(
+        uint8 _token_decimals,
+        uint256 initialSupply
+    ) ERC20("Mock Lemon Token", "LEMON") {
+        _decimals = _token_decimals;
+        _mint(msg.sender, initialSupply);
     }
 
-    // Basic Acces Control methods
-    function addManager(address _user) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        _grantRole(ROLE_MANAGER, _user);
-    }
-
-    function revokeManager(address _user) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        _revokeRole(ROLE_MANAGER, _user);
+    function decimals() public view virtual override returns (uint8) {
+        return _decimals;
     }
 }

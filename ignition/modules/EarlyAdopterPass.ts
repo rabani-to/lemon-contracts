@@ -7,6 +7,7 @@ import { zeroAddress } from "viem"
 const EarlyAdopterPassModule = buildModule("EarlyAdopterPassModule", (m) => {
   const maxSupply = {
     morphTestnet: BigInt(817),
+    morphMainnet: BigInt(256),
     maticMainnet: BigInt(420),
     baseMainnet: BigInt(420),
     ethMainnet: BigInt(420),

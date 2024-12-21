@@ -21,18 +21,18 @@ abstract contract BasicModifiers {
     error ZeroUserError();
     error ZeroAddressError();
 
-    modifier mustNotBeZero(uint256 value) {
-        if (value == uint256(0)) revert ZeroValueError();
+    modifier mustNotBeZero(uint256 _value) {
+        if (_value == uint256(0)) revert ZeroValueError();
         _;
     }
 
-    modifier mustBeValidUser(bytes32 userId) {
-        if (userId == bytes32(0)) revert ZeroUserError();
+    modifier mustBeValidUser(bytes32 _user) {
+        if (_user == bytes32(0)) revert ZeroUserError();
         _;
     }
 
-    modifier mustBeValidAddress(address addy) {
-        if (addy == address(0)) revert ZeroAddressError();
+    modifier mustBeValidAddress(address _address) {
+        if (_address == address(0)) revert ZeroAddressError();
         _;
     }
 }
